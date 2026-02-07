@@ -1,55 +1,51 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
-from datetime import datetime
-import json, os
-from app.engine.analyzer import generate_signal
-from app.engine.state import state
+from fastapi.responses import JSONResponse
 
 app = FastAPI(title="BacBo Live Analyzer")
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# ===============================
+# MEMÓRIA EM TEMPO REAL
+# ===============================
+history = []
+greens = 0
+reds = 0
 
-HISTORY_FILE = "data/history.json"
+# ===============================
+# LÓGICA SIMPLES (BASE)
+# ===============================
+def generate_signal(last):
+    if history.count(last) >= 2:
+        return last
+    return "BANKER" if last == "PLAYER" else "PLAYER"
 
-def save_history(entry):
-    os.makedirs("data", exist_ok=True)
-    history = []
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            history = json.load(f)
-    history.append(entry)
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
-
+# ===============================
+# API - NOVA RODADA
+# ===============================
 @app.post("/round")
-def new_round(result: str):
-    outcome = "N/A"
+def new_round(result: str = Query(...)):
+    global greens, reds
 
-    if state["last_signal"]:
-        outcome = "GREEN" if result == state["last_signal"] else "RED"
-        if outcome == "GREEN":
-            state["greens"] += 1
+    history.append(result)
+    signal = generate_signal(result)
+
+    # valida green/red automático
+    if len(history) > 1:
+        if history[-2] == result:
+            greens += 1
         else:
-            state["reds"] += 1
+            reds += 1
 
-    signal, confidence = generate_signal()
-
-    entry = {
-        "time": datetime.now().strftime("%H:%M:%S"),
-        "result": result,
-        "signal": state["last_signal"],
-        "confidence": state["last_confidence"],
-        "outcome": outcome
-    }
-
-    save_history(entry)
-
-    state["last_signal"] = signal
-    state["last_confidence"] = confidence
-
-    return {
+    return JSONResponse({
+        "last_result": result,
         "signal": signal,
-        "confidence": confidence,
-        "greens": state["greens"],
-        "reds": state["reds"]
-          }
+        "confidence": min(90, 50 + history.count(result) * 10),
+        "history": history[-20:],
+        "greens": greens,
+        "reds": reds
+    })
+
+# ===============================
+# PAINEL WEB
+# ===============================
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
