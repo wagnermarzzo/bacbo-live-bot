@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>BacBo Live Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>BacBo Live Analyzer</h1>
+
+<div id="signal">Sinal: --</div>
+<div id="confidence">Confiança: --%</div>
+
+<div>
+  <button onclick="sendResult('PLAYER')">PLAYER</button>
+  <button onclick="sendResult('BANKER')">BANKER</button>
+  <button onclick="sendResult('TIE')">TIE</button>
+</div>
+
+<div>
+  🟢 <span id="greens">0</span> |
+  🔴 <span id="reds">0</span>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
