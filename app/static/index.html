@@ -1,11 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
-  <meta charset="utf-8">
-  <title>Painel Bac Bo</title>
+  <meta charset="UTF-8">
+  <title>Bac Bo Live Analyzer</title>
 </head>
 <body>
-  <h2>Painel Online ✅</h2>
-  <p>Deploy funcionando.</p>
+  <h2>🎯 Bac Bo – Análise ao Vivo</h2>
+
+  <button onclick="send('PLAYER')">PLAYER</button>
+  <button onclick="send('BANKER')">BANKER</button>
+  <button onclick="send('TIE')">EMPATE</button>
+
+  <pre id="log"></pre>
+
+  <script>
+    async function send(result) {
+      const res = await fetch(`/round?result=${result}`, { method: "POST" })
+      const data = await res.json()
+      document.getElementById("log").innerText =
+        JSON.stringify(data, null, 2)
+    }
+  </script>
 </body>
 </html>
