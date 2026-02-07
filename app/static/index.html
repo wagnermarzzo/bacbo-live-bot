@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bac Bo Live</title>
+  <style>
+    body {
+      background: #0f172a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    .signal {
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    button {
+      width: 30%;
+      padding: 20px;
+      font-size: 18px;
+      margin: 5px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .player { background: #2563eb; }
+    .banker { background: #dc2626; }
+    .tie { background: #6b7280; }
+    .history span {
+      font-size: 22px;
+      margin: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="signal" id="signal">Aguardando...</div>
+
+  <button class="player" onclick="send('PLAYER')">PLAYER</button>
+  <button class="banker" onclick="send('BANKER')">BANKER</button>
+  <button class="tie" onclick="send('TIE')">EMPATE</button>
+
+  <div class="history" id="history"></div>
+
+<script>
+const API = "/round";
+
+function send(result) {
+  fetch(`${API}?result=${result}`, { method: "POST" })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("signal").innerText =
+        `👉 ${data.signal} (${data.confidence}%)`;
+
+      const historyDiv = document.getElementById("history");
+      historyDiv.innerHTML = "";
+      data.history.forEach(h => {
+        const span = document.createElement("span");
+        span.innerText = h === "PLAYER" ? "🔵" : h === "BANKER" ? "🔴" : "⚪";
+        historyDiv.appendChild(span);
+      });
+    });
+}
+</script>
+
+</body>
+  </html>
