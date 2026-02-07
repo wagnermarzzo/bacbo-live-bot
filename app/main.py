@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import json, os
-from engine.analyzer import generate_signal
-from engine.state import state
+from app.engine.analyzer import generate_signal
+from app.engine.state import state
 
 app = FastAPI(title="BacBo Live Analyzer")
 
