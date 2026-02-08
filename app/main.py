@@ -1,18 +1,22 @@
+import os
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
 app = FastAPI(title="BacBo Live Analyzer")
 
 # ===============================
-# MEMÓRIA EM TEMPO REAL
+# MEMÓRIA
 # ===============================
 history = []
 greens = 0
 reds = 0
 
 # ===============================
-# LÓGICA SIMPLES (BASE)
+# LÓGICA DO SINAL
 # ===============================
 def generate_signal(last):
     if history.count(last) >= 2:
@@ -29,7 +33,6 @@ def new_round(result: str = Query(...)):
     history.append(result)
     signal = generate_signal(result)
 
-    # valida green/red automático
     if len(history) > 1:
         if history[-2] == result:
             greens += 1
@@ -46,6 +49,7 @@ def new_round(result: str = Query(...)):
     })
 
 # ===============================
-# PAINEL WEB
+# STATIC (CAMINHO ABSOLUTO)
 # ===============================
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
