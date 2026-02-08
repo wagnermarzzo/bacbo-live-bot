@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="BacBo Evolution Analyzer")
+app = FastAPI(title="BacBo IA Final")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +26,7 @@ cooldown_counter = 0
 
 last_dominant = None
 break_detected = False
+confirm_count = 0
 
 
 # =========================
@@ -40,10 +41,10 @@ def detect_regime(recent):
     if b >= 0.7 * len(recent):
         return "DOMINIO", "BANKER"
 
-    # alternância falsa
+    # alternância
     alt = 0
-    for i in range(len(recent)-1):
-        if recent[i] != recent[i+1]:
+    for i in range(len(recent) - 1):
+        if recent[i] != recent[i + 1]:
             alt += 1
     if alt >= len(recent) - 2:
         return "ALTERNADO", None
@@ -52,7 +53,7 @@ def detect_regime(recent):
 
 
 def analyze():
-    global last_dominant, break_detected
+    global last_dominant, break_detected, confirm_count
 
     if len(results_history) < WINDOW:
         return None, 0
@@ -67,35 +68,42 @@ def analyze():
     regime, dominant = detect_regime(recent)
 
     # =====================
-    # DOMÍNIO DETECTADO
+    # DOMÍNIO
     # =====================
     if regime == "DOMINIO":
         last_dominant = dominant
         break_detected = False
-        return None, 0  # nunca entrar no domínio
+        confirm_count = 0
+        return None, 0
 
     # =====================
-    # QUEBRA DO DOMÍNIO
+    # CORREÇÃO
     # =====================
     if last_dominant:
         last = recent[-1]
         prev = recent[-2]
 
-        # Quebra aconteceu
+        # Quebra detectada
         if prev == last_dominant and last != last_dominant:
             break_detected = True
+            confirm_count = 0
             return None, 0
 
-        # Confirmação da correção
+        # Confirmações
         if break_detected and last == last_dominant:
-            confidence = 82
+            confirm_count += 1
+        else:
+            confirm_count = 0
 
-            # penalidades
+        # Entrada final
+        if confirm_count >= 2:
+            confidence = 85
             confidence -= ties * 4
-            confidence = max(confidence, 75)
+            confidence = max(confidence, 78)
 
-            break_detected = False
             last_dominant = None
+            break_detected = False
+            confirm_count = 0
 
             return last, confidence
 
@@ -163,7 +171,7 @@ def panel():
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BacBo Evolution</title>
+<title>BacBo IA Final</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
 button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16px; border:none; }
@@ -183,7 +191,7 @@ button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16p
 </head>
 <body>
 
-<h2>BacBo Evolution Analyzer</h2>
+<h2>BacBo IA Final</h2>
 
 <button class="player" onclick="send('PLAYER')">PLAYER</button>
 <button class="banker" onclick="send('BANKER')">BANKER</button>
