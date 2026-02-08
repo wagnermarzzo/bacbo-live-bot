@@ -1,25 +1,63 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Bac Bo Live Analyzer</title>
+<meta charset="UTF-8">
+<title>BacBo Live Analyzer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+button {
+    width: 90%;
+    padding: 20px;
+    margin: 10px;
+    font-size: 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+}
+.player { background: #2563eb; }
+.banker { background: #dc2626; }
+.tie { background: #16a34a; }
+.panel {
+    background: #020617;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 20px;
+}
+</style>
 </head>
 <body>
-  <h2>🎯 Bac Bo – Análise ao Vivo</h2>
 
-  <button onclick="send('PLAYER')">PLAYER</button>
-  <button onclick="send('BANKER')">BANKER</button>
-  <button onclick="send('TIE')">EMPATE</button>
+<h1>🎯 BacBo Live Analyzer</h1>
 
-  <pre id="log"></pre>
+<button class="player" onclick="send('PLAYER')">PLAYER</button>
+<button class="banker" onclick="send('BANKER')">BANKER</button>
+<button class="tie" onclick="send('TIE')">EMPATE</button>
 
-  <script>
-    async function send(result) {
-      const res = await fetch(`/round?result=${result}`, { method: "POST" })
-      const data = await res.json()
-      document.getElementById("log").innerText =
-        JSON.stringify(data, null, 2)
-    }
-  </script>
+<div class="panel" id="output">Aguardando rodada...</div>
+
+<script>
+function send(result) {
+    fetch(`/round?result=${result}`, { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("output").innerHTML = `
+            <b>Último:</b> ${data.last_result}<br>
+            <b>Sinal:</b> ${data.signal}<br>
+            <b>Confiança:</b> ${data.confidence}%<br><br>
+            ✅ Greens: ${data.greens} <br>
+            ❌ Reds: ${data.reds} <br><br>
+            <b>Histórico:</b><br>${data.history.join(" | ")}
+        `;
+    });
+}
+</script>
+
 </body>
 </html>
