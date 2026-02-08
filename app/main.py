@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="BacBo Live Analyzer")
+app = FastAPI(title="BacBo Evolution Analyzer")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,47 +18,86 @@ results_history = []
 signals_history = []
 current_signal = None
 
-MAX_HISTORY = 60
-COOLDOWN_ROUNDS = 5
+MAX_HISTORY = 80
+WINDOW = 12
+
+COOLDOWN_ROUNDS = 4
 cooldown_counter = 0
 
-WINDOW = 10  # janela de análise
+last_dominant = None
+break_detected = False
 
 
 # =========================
 # ANÁLISE
 # =========================
-def analyze():
-    if len(results_history) < 6:
-        return None, 0
-
-    recent = results_history[-WINDOW:]
-    recent = [x for x in recent if x != "TIE"]
-
-    if len(recent) < 5:
-        return None, 0
-
+def detect_regime(recent):
     p = recent.count("PLAYER")
     b = recent.count("BANKER")
 
-    last = recent[-1]
-    streak = 1
-    for i in range(len(recent) - 2, -1, -1):
-        if recent[i] == last:
-            streak += 1
-        else:
-            break
+    if p >= 0.7 * len(recent):
+        return "DOMINIO", "PLAYER"
+    if b >= 0.7 * len(recent):
+        return "DOMINIO", "BANKER"
 
-    # STREAK CONTROLADO
-    if 3 <= streak <= 5:
-        confidence = min(60 + streak * 6, 92)
-        return last, confidence
+    # alternância falsa
+    alt = 0
+    for i in range(len(recent)-1):
+        if recent[i] != recent[i+1]:
+            alt += 1
+    if alt >= len(recent) - 2:
+        return "ALTERNADO", None
 
-    # DESEQUILÍBRIO
-    if abs(p - b) >= 3:
-        signal = "PLAYER" if p > b else "BANKER"
-        confidence = min(65 + abs(p - b) * 5, 90)
-        return signal, confidence
+    return "NEUTRO", None
+
+
+def analyze():
+    global last_dominant, break_detected
+
+    if len(results_history) < WINDOW:
+        return None, 0
+
+    recent = results_history[-WINDOW:]
+    ties = recent.count("TIE")
+    recent = [x for x in recent if x != "TIE"]
+
+    if len(recent) < 6:
+        return None, 0
+
+    regime, dominant = detect_regime(recent)
+
+    # =====================
+    # DOMÍNIO DETECTADO
+    # =====================
+    if regime == "DOMINIO":
+        last_dominant = dominant
+        break_detected = False
+        return None, 0  # nunca entrar no domínio
+
+    # =====================
+    # QUEBRA DO DOMÍNIO
+    # =====================
+    if last_dominant:
+        last = recent[-1]
+        prev = recent[-2]
+
+        # Quebra aconteceu
+        if prev == last_dominant and last != last_dominant:
+            break_detected = True
+            return None, 0
+
+        # Confirmação da correção
+        if break_detected and last == last_dominant:
+            confidence = 82
+
+            # penalidades
+            confidence -= ties * 4
+            confidence = max(confidence, 75)
+
+            break_detected = False
+            last_dominant = None
+
+            return last, confidence
 
     return None, 0
 
@@ -89,17 +128,11 @@ def new_round(result: str):
     # Cooldown
     if cooldown_counter > 0:
         cooldown_counter -= 1
-        return {
-            "last_result": result,
-            "current_signal": None,
-            "cooldown": cooldown_counter,
-            "signals_history": signals_history,
-            "results_history": results_history
-        }
+        return response(result)
 
-    # Novo sinal
+    # Análise
     signal, confidence = analyze()
-    if signal:
+    if signal and confidence >= 78:
         current_signal = {
             "signal": signal,
             "confidence": confidence,
@@ -107,6 +140,10 @@ def new_round(result: str):
         }
         cooldown_counter = COOLDOWN_ROUNDS
 
+    return response(result)
+
+
+def response(result):
     return {
         "last_result": result,
         "current_signal": current_signal,
@@ -126,13 +163,10 @@ def panel():
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BacBo Live</title>
+<title>BacBo Evolution</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
-button {
-    width:92%; padding:26px; margin:10px;
-    font-size:28px; border-radius:16px; border:none;
-}
+button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16px; border:none; }
 .player { background:#2563eb; }
 .banker { background:#dc2626; }
 .tie { background:#16a34a; }
@@ -149,63 +183,46 @@ button {
 </head>
 <body>
 
-<h2>BacBo Live Analyzer</h2>
+<h2>BacBo Evolution Analyzer</h2>
 
 <button class="player" onclick="send('PLAYER')">PLAYER</button>
 <button class="banker" onclick="send('BANKER')">BANKER</button>
 <button class="tie" onclick="send('TIE')">EMPATE</button>
 
-<h3>Resultado Atual</h3>
-<div id="result"></div>
-
-<h3>Sinal</h3>
-<div id="signal"></div>
-
-<h3>Cooldown</h3>
-<div id="cooldown"></div>
-
-<h3>Histórico Resultados</h3>
-<div id="results"></div>
-
-<h3>Histórico Sinais</h3>
-<div id="signals"></div>
+<h3>Resultado Atual</h3><div id="result"></div>
+<h3>Sinal</h3><div id="signal"></div>
+<h3>Cooldown</h3><div id="cooldown"></div>
+<h3>Histórico Resultados</h3><div id="results"></div>
+<h3>Histórico Sinais</h3><div id="signals"></div>
 
 <script>
 async function send(r){
-    const res = await fetch('/round?result='+r, {method:'POST'})
-    const d = await res.json()
+ const res = await fetch('/round?result='+r,{method:'POST'})
+ const d = await res.json()
 
-    document.getElementById("result").innerText = d.last_result
+ document.getElementById("result").innerText=d.last_result
+ document.getElementById("signal").innerText=d.current_signal?
+ d.current_signal.signal+" ("+d.current_signal.confidence+"%)":"SEM SINAL"
 
-    if(d.current_signal){
-        document.getElementById("signal").innerText =
-        d.current_signal.signal + " (" + d.current_signal.confidence + "%)"
-    } else {
-        document.getElementById("signal").innerText = "SEM SINAL"
-    }
+ document.getElementById("cooldown").innerHTML=
+ d.cooldown>0?"<span class='cool'>Aguardando "+d.cooldown+" rodadas</span>":"LIBERADO"
 
-    document.getElementById("cooldown").innerHTML =
-        d.cooldown > 0 ? "<span class='cool'>Aguardando " + d.cooldown + " rodadas</span>" : "LIBERADO"
+ let hr=""
+ d.results_history.forEach(x=>{
+  if(x=="PLAYER")hr+='<span class="dot P"></span>'
+  if(x=="BANKER")hr+='<span class="dot B"></span>'
+  if(x=="TIE")hr+='<span class="dot T"></span>'
+ })
+ document.getElementById("results").innerHTML=hr
 
-    let hr = ""
-    d.results_history.forEach(x=>{
-        if(x==="PLAYER") hr+='<span class="dot P"></span>'
-        if(x==="BANKER") hr+='<span class="dot B"></span>'
-        if(x==="TIE") hr+='<span class="dot T"></span>'
-    })
-    document.getElementById("results").innerHTML = hr
-
-    let hs = ""
-    d.signals_history.forEach(s=>{
-        hs += s.signal + " - "
-        hs += s.outcome=="GREEN" ? "<span class='green'>GREEN</span>" :
-              "<span class='red'>RED</span>"
-        hs += "<br>"
-    })
-    document.getElementById("signals").innerHTML = hs
+ let hs=""
+ d.signals_history.forEach(s=>{
+  hs+=s.signal+" - "+(s.outcome=="GREEN"?
+  "<span class='green'>GREEN</span>":"<span class='red'>RED</span>")+"<br>"
+ })
+ document.getElementById("signals").innerHTML=hs
 }
 </script>
-
 </body>
 </html>
 """
