@@ -17,7 +17,10 @@ app.add_middleware(
 results_history = []
 signals_history = []
 current_signal = None
+
 MAX_HISTORY = 60
+COOLDOWN_ROUNDS = 5
+cooldown_counter = 0
 
 
 # =========================
@@ -55,7 +58,7 @@ def analyze():
 # =========================
 @app.post("/round")
 def new_round(result: str):
-    global current_signal
+    global current_signal, cooldown_counter
 
     result = result.upper()
     if result not in ["PLAYER", "BANKER", "TIE"]:
@@ -66,11 +69,23 @@ def new_round(result: str):
         outcome = "GREEN" if result == current_signal["signal"] else "RED"
         current_signal["outcome"] = outcome
         signals_history.append(current_signal)
+        current_signal = None
 
     # Registra resultado real
     results_history.append(result)
     if len(results_history) > MAX_HISTORY:
         results_history.pop(0)
+
+    # Conta cooldown
+    if cooldown_counter > 0:
+        cooldown_counter -= 1
+        return {
+            "last_result": result,
+            "current_signal": None,
+            "cooldown": cooldown_counter,
+            "signals_history": signals_history,
+            "results_history": results_history
+        }
 
     # Gera novo sinal
     signal, confidence = analyze()
@@ -80,12 +95,12 @@ def new_round(result: str):
             "confidence": confidence,
             "outcome": "WAIT"
         }
-    else:
-        current_signal = None
+        cooldown_counter = COOLDOWN_ROUNDS
 
     return {
         "last_result": result,
         "current_signal": current_signal,
+        "cooldown": cooldown_counter,
         "signals_history": signals_history,
         "results_history": results_history
     }
@@ -105,8 +120,8 @@ def panel():
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
 button {
-    width:90%; padding:26px; margin:10px;
-    font-size:28px; border-radius:14px; border:none;
+    width:92%; padding:26px; margin:10px;
+    font-size:28px; border-radius:16px; border:none;
 }
 .player { background:#2563eb; }
 .banker { background:#dc2626; }
@@ -117,8 +132,9 @@ button {
 .B { background:#dc2626; }
 .T { background:#16a34a; }
 
-.green { color:#22c55e; }
-.red { color:#ef4444; }
+.green { color:#22c55e; font-weight:bold; }
+.red { color:#ef4444; font-weight:bold; }
+.cool { color:#eab308; }
 </style>
 </head>
 <body>
@@ -132,8 +148,11 @@ button {
 <h3>Resultado Atual</h3>
 <div id="result"></div>
 
-<h3>Sinal Ativo</h3>
+<h3>Sinal</h3>
 <div id="signal"></div>
+
+<h3>Cooldown</h3>
+<div id="cooldown"></div>
 
 <h3>Histórico Resultados</h3>
 <div id="results"></div>
@@ -152,8 +171,11 @@ async function send(r){
         document.getElementById("signal").innerText =
         d.current_signal.signal + " (" + d.current_signal.confidence + "%)"
     } else {
-        document.getElementById("signal").innerText = "AGUARDANDO"
+        document.getElementById("signal").innerText = "SEM SINAL"
     }
+
+    document.getElementById("cooldown").innerHTML =
+        d.cooldown > 0 ? "<span class='cool'>Aguardando " + d.cooldown + " rodadas</span>" : "LIBERADO"
 
     let hr = ""
     d.results_history.forEach(x=>{
