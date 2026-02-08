@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 
-app = FastAPI(title="Bacboo IA Pro")
+app = FastAPI(title="Bacboo IA Pro Ajustado")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,17 +36,12 @@ def new_session():
         "last_dominant": None,
         "confirm_count": 0,
         "mode": "CONSERVADOR",
-        "confirm_required": 3,
+        "confirm_required": 2,
         "base_confidence": 75,
-        "cooldown": 0
+        "cooldown": 0,
+        "window": 12,
+        "zigzag_len": 4
     }
-
-# =========================
-# CONFIG
-# =========================
-MAX_HISTORY = 80
-WINDOW = 12
-ZIGZAG_FILTER_LEN = 4  # Evita sinais em zigue-zague
 
 # =========================
 # LOGIN
@@ -57,7 +52,7 @@ def login_page():
 <!DOCTYPE html>
 <html>
 <body style="background:#020617;color:white;text-align:center;font-family:Arial">
-<h2>Bacboo IA Pro</h2>
+<h2>Bacboo IA Pro Ajustado</h2>
 <form method="post">
 <input name="license" placeholder="LICENÇA" style="padding:14px;font-size:18px" required>
 <br><br>
@@ -100,42 +95,42 @@ def detect_regime(recent):
 
 def analyze(state):
     rh = state["results_history"]
+    window = state.get("window",12)
+    zig_len = state.get("zigzag_len",4)
 
-    if len(rh) < WINDOW:
+    if len(rh) < window:
         return None, 0
 
-    recent = [x for x in rh[-WINDOW:] if x in ("PLAYER","BANKER")]
+    recent = [x for x in rh[-window:] if x in ("PLAYER","BANKER")]
     if len(recent) < 6:
         return None, 0
 
-    # Filtro zigue-zague
-    if len(recent) >= ZIGZAG_FILTER_LEN:
-        last_four = recent[-ZIGZAG_FILTER_LEN:]
-        if len(set(last_four)) == 2 and last_four.count(last_four[0]) == 2:
+    # Filtro zig-zag
+    if len(recent) >= zig_len:
+        last_z = recent[-zig_len:]
+        if len(set(last_z)) == 2 and last_z.count(last_z[0]) == zig_len//2:
             return None, 0
 
     regime, dominant = detect_regime(recent)
 
-    # 🔒 Detecta domínio
+    # Detecta domínio
     if regime == "DOMINIO":
         state["last_dominant"] = dominant
         state["confirm_count"] = 0
         return None, 0
 
-    # 🔓 Quebra confirmada
+    # Quebra confirmada
     if state["last_dominant"]:
         if recent[-1] != state["last_dominant"]:
             state["confirm_count"] += 1
         else:
             state["confirm_count"] = 0
 
-        if state["confirm_count"] >= state.get("confirm_required",3):
-            # Evita sinal durante cooldown pós RED
+        if state["confirm_count"] >= state.get("confirm_required",2):
             if state.get("cooldown",0) > 0:
                 state["cooldown"] -= 1
                 return None, 0
             signal = recent[-1]
-            # Confiança dinâmica: +2% por repetição do dominante
             confidence = state.get("base_confidence",75) + min(10, recent.count(state["last_dominant"])*2)
             state["last_dominant"] = None
             state["confirm_count"] = 0
@@ -160,19 +155,22 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
     mode = mode.upper()
     state["mode"] = mode
     if mode == "AGRESSIVO":
-        state["confirm_required"] = 2
+        state["confirm_required"] = 1
         state["base_confidence"] = 65
+        state["window"] = 8
+        state["zigzag_len"] = 3
     else:
-        state["confirm_required"] = 3
+        state["confirm_required"] = 2
         state["base_confidence"] = 75
+        state["window"] = 12
+        state["zigzag_len"] = 4
 
     # Fecha sinal anterior
     if state["current_signal"]:
         if result == "TIE":
-            outcome = "PUSH"  # Meio red
+            outcome = "PUSH"
         else:
             outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
-        # Se RED, ativa cooldown
         if outcome == "RED":
             state["cooldown"] = 1
         state["current_signal"]["outcome"] = outcome
@@ -181,7 +179,7 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
 
     # Registra resultado
     state["results_history"].append(result)
-    if len(state["results_history"]) > MAX_HISTORY:
+    if len(state["results_history"]) > 100:
         state["results_history"].pop(0)
 
     # Analisa
@@ -196,7 +194,6 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
     return response(state, result)
 
 def response(state, result):
-    # Hit rate sem PUSH
     valid = [s for s in state["signals_history"] if s["outcome"] in ("GREEN","RED")]
     wins = len([s for s in valid if s["outcome"]=="GREEN"])
     hit_rate = round((wins/len(valid))*100,1) if valid else 0
@@ -223,7 +220,7 @@ def panel(request: Request):
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bacboo IA Pro - Visual</title>
+<title>Bacboo IA Pro Visual</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
 button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px; border:none; cursor:pointer; }
@@ -247,7 +244,7 @@ button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px
 </head>
 <body>
 
-<h2>Bacboo IA Pro - Visual</h2>
+<h2>Bacboo IA Pro Visual</h2>
 
 <h3>Modo de Operação</h3>
 <button onclick="setMode('CONSERVADOR')">Conservador</button>
