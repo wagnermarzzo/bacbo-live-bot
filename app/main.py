@@ -35,7 +35,6 @@ def new_session():
         "current_signal": None,
         "cooldown_counter": 0,
         "last_dominant": None,
-        "break_detected": False,
         "confirm_count": 0
     }
 
@@ -44,7 +43,7 @@ def new_session():
 # =========================
 MAX_HISTORY = 80
 WINDOW = 12
-COOLDOWN_ROUNDS = 4
+COOLDOWN_ROUNDS = 5   # ✅ espera renovada
 
 # =========================
 # LOGIN
@@ -57,9 +56,9 @@ def login_page():
 <body style="background:#020617;color:white;text-align:center;font-family:Arial">
 <h2>Bacboo IA Final</h2>
 <form method="post">
-<input name="license" placeholder="LICENÇA" style="padding:12px;font-size:18px">
+<input name="license" placeholder="LICENÇA" style="padding:14px;font-size:18px" required>
 <br><br>
-<button style="padding:12px 30px;font-size:18px">ENTRAR</button>
+<button style="padding:14px 40px;font-size:18px">ENTRAR</button>
 </form>
 </body>
 </html>
@@ -70,34 +69,37 @@ def login(license: str = Form(...)):
     if license not in VALID_LICENSES:
         return HTMLResponse("<h3 style='color:red'>LICENÇA INVÁLIDA</h3>", status_code=403)
 
-    session_id = str(uuid.uuid4())
-    sessions[session_id] = new_session()
+    sid = str(uuid.uuid4())
+    sessions[sid] = new_session()
 
-    response = RedirectResponse("/", status_code=302)
-    response.set_cookie("session_id", session_id)
-    return response
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie("session_id", sid, httponly=True)
+    return resp
 
 # =========================
 # SESSÃO ATIVA
 # =========================
 def get_state(request: Request):
     sid = request.cookies.get("session_id")
-    if not sid or sid not in sessions:
-        return None
-    return sessions[sid]
+    return sessions.get(sid)
 
 # =========================
-# ANALISE
+# ANÁLISE
 # =========================
 def detect_regime(recent):
     p = recent.count("PLAYER")
     b = recent.count("BANKER")
-    if p >= 0.7 * len(recent): return "DOMINIO", "PLAYER"
-    if b >= 0.7 * len(recent): return "DOMINIO", "BANKER"
+
+    if p >= 0.7 * len(recent):
+        return "DOMINIO", "PLAYER"
+    if b >= 0.7 * len(recent):
+        return "DOMINIO", "BANKER"
+
     return "NEUTRO", None
 
 def analyze(state):
     rh = state["results_history"]
+
     if len(rh) < WINDOW:
         return None, 0
 
@@ -138,16 +140,24 @@ def new_round(result: str, request: Request):
     if result not in ["PLAYER", "BANKER", "TIE"]:
         return {"error": "INVALID"}
 
-    if state["current_signal"]:
+    # 🔒 FECHA SINAL ANTERIOR
+    if state["current_signal"] and result != "TIE":
         outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
         state["current_signal"]["outcome"] = outcome
         state["signals_history"].append(state["current_signal"])
         state["current_signal"] = None
 
+    # 📊 REGISTRA RESULTADO
     state["results_history"].append(result)
     if len(state["results_history"]) > MAX_HISTORY:
         state["results_history"].pop(0)
 
+    # ⏳ COOLDOWN FUNCIONAL
+    if state["cooldown_counter"] > 0:
+        state["cooldown_counter"] -= 1
+        return response(state, result)
+
+    # 🧠 ANALISA
     signal, confidence = analyze(state)
     if signal:
         state["current_signal"] = {
@@ -157,6 +167,9 @@ def new_round(result: str, request: Request):
         }
         state["cooldown_counter"] = COOLDOWN_ROUNDS
 
+    return response(state, result)
+
+def response(state, result):
     return {
         "last_result": result,
         "current_signal": state["current_signal"],
