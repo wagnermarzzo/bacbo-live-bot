@@ -22,6 +22,8 @@ MAX_HISTORY = 60
 COOLDOWN_ROUNDS = 5
 cooldown_counter = 0
 
+WINDOW = 10  # janela de análise
+
 
 # =========================
 # ANÁLISE
@@ -30,25 +32,33 @@ def analyze():
     if len(results_history) < 6:
         return None, 0
 
-    p = results_history.count("PLAYER")
-    b = results_history.count("BANKER")
+    recent = results_history[-WINDOW:]
+    recent = [x for x in recent if x != "TIE"]
 
-    last = results_history[-1]
+    if len(recent) < 5:
+        return None, 0
+
+    p = recent.count("PLAYER")
+    b = recent.count("BANKER")
+
+    last = recent[-1]
     streak = 1
-    for i in range(len(results_history) - 2, -1, -1):
-        if results_history[i] == last:
+    for i in range(len(recent) - 2, -1, -1):
+        if recent[i] == last:
             streak += 1
         else:
             break
 
-    if streak >= 3:
-        return last, 85
+    # STREAK CONTROLADO
+    if 3 <= streak <= 5:
+        confidence = min(60 + streak * 6, 92)
+        return last, confidence
 
-    if p > b + 2:
-        return "PLAYER", 75
-
-    if b > p + 2:
-        return "BANKER", 75
+    # DESEQUILÍBRIO
+    if abs(p - b) >= 3:
+        signal = "PLAYER" if p > b else "BANKER"
+        confidence = min(65 + abs(p - b) * 5, 90)
+        return signal, confidence
 
     return None, 0
 
@@ -71,12 +81,12 @@ def new_round(result: str):
         signals_history.append(current_signal)
         current_signal = None
 
-    # Registra resultado real
+    # Registra resultado
     results_history.append(result)
     if len(results_history) > MAX_HISTORY:
         results_history.pop(0)
 
-    # Conta cooldown
+    # Cooldown
     if cooldown_counter > 0:
         cooldown_counter -= 1
         return {
@@ -87,7 +97,7 @@ def new_round(result: str):
             "results_history": results_history
         }
 
-    # Gera novo sinal
+    # Novo sinal
     signal, confidence = analyze()
     if signal:
         current_signal = {
