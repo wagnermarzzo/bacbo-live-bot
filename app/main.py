@@ -1,55 +1,29 @@
-import os
-from fastapi import FastAPI, Query
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from app.state import add_result, history
+from app.analyzer import generate_signal
+import os
+
+app = FastAPI()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-app = FastAPI(title="BacBo Live Analyzer")
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
-# ===============================
-# MEMÓRIA
-# ===============================
-history = []
-greens = 0
-reds = 0
+@app.post("/result/{value}")
+def post_result(value: str):
+    value = value.upper()
+    if value not in ["PLAYER", "BANKER", "TIE"]:
+        return JSONResponse({"error": "Resultado inválido"}, status_code=400)
 
-# ===============================
-# LÓGICA DO SINAL
-# ===============================
-def generate_signal(last):
-    if history.count(last) >= 2:
-        return last
-    return "BANKER" if last == "PLAYER" else "PLAYER"
+    add_result(value)
+    signal, conf, status = generate_signal()
 
-# ===============================
-# API - NOVA RODADA
-# ===============================
-@app.post("/round")
-def new_round(result: str = Query(...)):
-    global greens, reds
-
-    history.append(result)
-    signal = generate_signal(result)
-
-    if len(history) > 1:
-        if history[-2] == result:
-            greens += 1
-        else:
-            reds += 1
-
-    return JSONResponse({
-        "last_result": result,
+    return {
+        "history": history,
         "signal": signal,
-        "confidence": min(90, 50 + history.count(result) * 10),
-        "history": history[-20:],
-        "greens": greens,
-        "reds": reds
-    })
-
-# ===============================
-# STATIC (CAMINHO ABSOLUTO)
-# ===============================
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+        "confidence": conf,
+        "status": status
+    }
