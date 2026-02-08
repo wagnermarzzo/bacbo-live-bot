@@ -165,24 +165,7 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
         state["window"] = 12
         state["zigzag_len"] = 4
 
-    # Fecha sinal anterior e registra no histórico
-    if state["current_signal"]:
-        signal_entry = state["current_signal"].copy()
-        if result == "TIE":
-            signal_entry["outcome"] = "PUSH"
-        else:
-            signal_entry["outcome"] = "GREEN" if result == signal_entry["signal"] else "RED"
-            if signal_entry["outcome"] == "RED":
-                state["cooldown"] = 1
-        state["signals_history"].append(signal_entry)
-        state["current_signal"] = None
-
-    # Registra resultado
-    state["results_history"].append(result)
-    if len(state["results_history"]) > 100:
-        state["results_history"].pop(0)
-
-    # Analisa
+    # Analisa e gera sinal
     signal, confidence = analyze(state)
     if signal:
         state["current_signal"] = {
@@ -190,6 +173,22 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
             "confidence": confidence,
             "outcome": "WAIT"
         }
+        # ✅ Registra imediatamente no histórico
+        state["signals_history"].append(state["current_signal"].copy())
+
+    # Fecha sinal anterior quando há resultado e atualiza outcome
+    if state["current_signal"] and result != "TIE":
+        for s in state["signals_history"]:
+            if s["outcome"] == "WAIT" and s["signal"] == state["current_signal"]["signal"]:
+                s["outcome"] = "GREEN" if result == s["signal"] else "RED"
+                if s["outcome"] == "RED":
+                    state["cooldown"] = 1
+        state["current_signal"] = None
+
+    # Registra resultado
+    state["results_history"].append(result)
+    if len(state["results_history"]) > 100:
+        state["results_history"].pop(0)
 
     return response(state, result)
 
