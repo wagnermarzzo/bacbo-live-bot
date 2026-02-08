@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 
-app = FastAPI(title="Bacboo IA Pro Ajustado")
+app = FastAPI(title="Bacboo IA Pro Final")
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,7 +52,7 @@ def login_page():
 <!DOCTYPE html>
 <html>
 <body style="background:#020617;color:white;text-align:center;font-family:Arial">
-<h2>Bacboo IA Pro Ajustado</h2>
+<h2>Bacboo IA Pro Final</h2>
 <form method="post">
 <input name="license" placeholder="LICENÇA" style="padding:14px;font-size:18px" required>
 <br><br>
@@ -165,16 +165,16 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
         state["window"] = 12
         state["zigzag_len"] = 4
 
-    # Fecha sinal anterior
+    # Fecha sinal anterior e registra no histórico
     if state["current_signal"]:
+        signal_entry = state["current_signal"].copy()
         if result == "TIE":
-            outcome = "PUSH"
+            signal_entry["outcome"] = "PUSH"
         else:
-            outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
-        if outcome == "RED":
-            state["cooldown"] = 1
-        state["current_signal"]["outcome"] = outcome
-        state["signals_history"].append(state["current_signal"])
+            signal_entry["outcome"] = "GREEN" if result == signal_entry["signal"] else "RED"
+            if signal_entry["outcome"] == "RED":
+                state["cooldown"] = 1
+        state["signals_history"].append(signal_entry)
         state["current_signal"] = None
 
     # Registra resultado
@@ -220,7 +220,7 @@ def panel(request: Request):
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bacboo IA Pro Visual</title>
+<title>Bacboo IA Pro Final</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
 button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px; border:none; cursor:pointer; }
@@ -244,7 +244,7 @@ button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px
 </head>
 <body>
 
-<h2>Bacboo IA Pro Visual</h2>
+<h2>Bacboo IA Pro Final</h2>
 
 <h3>Modo de Operação</h3>
 <button onclick="setMode('CONSERVADOR')">Conservador</button>
