@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 
-app = FastAPI(title="Bacboo IA Pro Final")
+app = FastAPI(title="Bacboo IA Correto")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,9 +12,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
-# LICENÇAS
-# =========================
 VALID_LICENSES = {
     "BACBOO-IA-9F3K-1A",
     "BACBOO-IA-7Q2M-4B",
@@ -23,9 +20,6 @@ VALID_LICENSES = {
     "BACBOO-IA-5ZK4-8E",
 }
 
-# =========================
-# SESSÕES
-# =========================
 sessions = {}
 
 def new_session():
@@ -43,16 +37,13 @@ def new_session():
         "zigzag_len": 4
     }
 
-# =========================
-# LOGIN
-# =========================
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
     return """
 <!DOCTYPE html>
 <html>
 <body style="background:#020617;color:white;text-align:center;font-family:Arial">
-<h2>Bacboo IA Pro Final</h2>
+<h2>Bacboo IA Correto</h2>
 <form method="post">
 <input name="license" placeholder="LICENÇA" style="padding:14px;font-size:18px" required>
 <br><br>
@@ -69,21 +60,14 @@ def login(license: str = Form(...)):
 
     sid = str(uuid.uuid4())
     sessions[sid] = new_session()
-
     resp = RedirectResponse("/", status_code=302)
     resp.set_cookie("session_id", sid, httponly=True)
     return resp
 
-# =========================
-# SESSÃO
-# =========================
 def get_state(request: Request):
     sid = request.cookies.get("session_id")
     return sessions.get(sid)
 
-# =========================
-# ANÁLISE
-# =========================
 def detect_regime(recent):
     p = recent.count("PLAYER")
     b = recent.count("BANKER")
@@ -105,7 +89,7 @@ def analyze(state):
     if len(recent) < 6:
         return None, 0
 
-    # Filtro zig-zag
+    # Zig-zag filter
     if len(recent) >= zig_len:
         last_z = recent[-zig_len:]
         if len(set(last_z)) == 2 and last_z.count(last_z[0]) == zig_len//2:
@@ -113,13 +97,11 @@ def analyze(state):
 
     regime, dominant = detect_regime(recent)
 
-    # Detecta domínio
     if regime == "DOMINIO":
         state["last_dominant"] = dominant
         state["confirm_count"] = 0
         return None, 0
 
-    # Quebra confirmada
     if state["last_dominant"]:
         if recent[-1] != state["last_dominant"]:
             state["confirm_count"] += 1
@@ -138,9 +120,6 @@ def analyze(state):
 
     return None, 0
 
-# =========================
-# API
-# =========================
 @app.post("/round")
 def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
     state = get_state(request)
@@ -151,7 +130,6 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
     if result not in ["PLAYER","BANKER","TIE"]:
         return {"error": "INVALID"}
 
-    # Ajusta modo
     mode = mode.upper()
     state["mode"] = mode
     if mode == "AGRESSIVO":
@@ -165,7 +143,19 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
         state["window"] = 12
         state["zigzag_len"] = 4
 
-    # Analisa e gera sinal
+    # Registra resultado
+    state["results_history"].append(result)
+    if len(state["results_history"]) > 100:
+        state["results_history"].pop(0)
+
+    # Atualiza outcome de sinais pendentes
+    for s in state["signals_history"]:
+        if s["outcome"] == "WAIT" and result != "TIE":
+            s["outcome"] = "GREEN" if result == s["signal"] else "RED"
+            if s["outcome"] == "RED":
+                state["cooldown"] = 1
+
+    # Analisa e gera novo sinal
     signal, confidence = analyze(state)
     if signal:
         state["current_signal"] = {
@@ -173,22 +163,7 @@ def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
             "confidence": confidence,
             "outcome": "WAIT"
         }
-        # ✅ Registra imediatamente no histórico
         state["signals_history"].append(state["current_signal"].copy())
-
-    # Fecha sinal anterior quando há resultado e atualiza outcome
-    if state["current_signal"] and result != "TIE":
-        for s in state["signals_history"]:
-            if s["outcome"] == "WAIT" and s["signal"] == state["current_signal"]["signal"]:
-                s["outcome"] = "GREEN" if result == s["signal"] else "RED"
-                if s["outcome"] == "RED":
-                    state["cooldown"] = 1
-        state["current_signal"] = None
-
-    # Registra resultado
-    state["results_history"].append(result)
-    if len(state["results_history"]) > 100:
-        state["results_history"].pop(0)
 
     return response(state, result)
 
@@ -206,9 +181,6 @@ def response(state, result):
         "mode": state["mode"]
     }
 
-# =========================
-# PAINEL VISUAL
-# =========================
 @app.get("/", response_class=HTMLResponse)
 def panel(request: Request):
     if not get_state(request):
@@ -219,7 +191,7 @@ def panel(request: Request):
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bacboo IA Pro Final</title>
+<title>Bacboo IA Correto</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
 button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px; border:none; cursor:pointer; }
@@ -243,7 +215,7 @@ button { width:90%; padding:16px; margin:6px; font-size:20px; border-radius:12px
 </head>
 <body>
 
-<h2>Bacboo IA Pro Final</h2>
+<h2>Bacboo IA Correto</h2>
 
 <h3>Modo de Operação</h3>
 <button onclick="setMode('CONSERVADOR')">Conservador</button>
@@ -301,7 +273,6 @@ async function send(r){
 
  document.getElementById("hit").innerText = d.hit_rate+"%"
 
- // Sequência de resultados
  let hr=""
  d.results_history.forEach(x=>{
   if(x=="PLAYER") hr+='<span class="dot P"></span>'
@@ -310,7 +281,6 @@ async function send(r){
  })
  document.getElementById("results").innerHTML=hr
 
- // Histórico de sinais
  let hs=""
  d.signals_history.forEach(s=>{
   let c = s.outcome=="GREEN" ? "green" : s.outcome=="PUSH" ? "push" : "red";
