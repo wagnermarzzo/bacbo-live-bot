@@ -34,7 +34,10 @@ def new_session():
         "signals_history": [],
         "current_signal": None,
         "last_dominant": None,
-        "confirm_count": 0
+        "confirm_count": 0,
+        "mode": "CONSERVADOR",
+        "confirm_required": 2,
+        "base_confidence": 75
     }
 
 # =========================
@@ -42,8 +45,6 @@ def new_session():
 # =========================
 MAX_HISTORY = 80
 WINDOW = 12
-CONFIRM_REQUIRED = 1   # ✅ confirmação mínima
-BASE_CONFIDENCE = 72   # 📉 confiança reduzida
 
 # =========================
 # LOGIN
@@ -122,11 +123,11 @@ def analyze(state):
         else:
             state["confirm_count"] = 0
 
-        if state["confirm_count"] >= CONFIRM_REQUIRED:
+        if state["confirm_count"] >= state.get("confirm_required", 2):
             signal = recent[-1]
             state["last_dominant"] = None
             state["confirm_count"] = 0
-            return signal, BASE_CONFIDENCE
+            return signal, state.get("base_confidence", 75)
 
     return None, 0
 
@@ -134,7 +135,7 @@ def analyze(state):
 # API
 # =========================
 @app.post("/round")
-def new_round(result: str, request: Request):
+def new_round(result: str, request: Request, mode: str = "CONSERVADOR"):
     state = get_state(request)
     if not state:
         return {"error": "LOGIN_REQUIRED"}
@@ -143,9 +144,23 @@ def new_round(result: str, request: Request):
     if result not in ["PLAYER", "BANKER", "TIE"]:
         return {"error": "INVALID"}
 
+    # 🧩 Ajusta modo
+    mode = mode.upper()
+    state["mode"] = mode
+    if mode == "AGRESSIVO":
+        state["confirm_required"] = 1
+        state["base_confidence"] = 65
+    else:
+        state["confirm_required"] = 2
+        state["base_confidence"] = 75
+
     # 📌 Fecha sinal anterior
-    if state["current_signal"] and result != "TIE":
-        outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
+    if state["current_signal"]:
+        if result == "TIE":
+            outcome = "PUSH"
+        else:
+            outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
+
         state["current_signal"]["outcome"] = outcome
         state["signals_history"].append(state["current_signal"])
         state["current_signal"] = None
@@ -167,16 +182,18 @@ def new_round(result: str, request: Request):
     return response(state, result)
 
 def response(state, result):
-    total = len(state["signals_history"])
-    wins = len([s for s in state["signals_history"] if s["outcome"] == "GREEN"])
-    hit_rate = round((wins / total) * 100, 1) if total > 0 else 0
+    # Considera PUSH como meio RED
+    valid = [s for s in state["signals_history"] if s["outcome"] in ("GREEN","RED")]
+    wins = len([s for s in valid if s["outcome"] == "GREEN"])
+    hit_rate = round((wins / len(valid)) * 100, 1) if valid else 0
 
     return {
         "last_result": result,
         "current_signal": state["current_signal"],
         "hit_rate": hit_rate,
         "signals_history": state["signals_history"],
-        "results_history": state["results_history"]
+        "results_history": state["results_history"],
+        "mode": state["mode"]
     }
 
 # =========================
@@ -195,7 +212,7 @@ def panel(request: Request):
 <title>Bacboo IA Final</title>
 <style>
 body { background:#020617; color:white; font-family:Arial; text-align:center; }
-button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16px; border:none; }
+button { width:90%; padding:18px; margin:10px; font-size:22px; border-radius:16px; border:none; cursor:pointer; }
 .player { background:#2563eb; }
 .banker { background:#dc2626; }
 .tie { background:#16a34a; }
@@ -205,12 +222,19 @@ button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16p
 .T { background:#16a34a; }
 .green { color:#22c55e; font-weight:bold; }
 .red { color:#ef4444; font-weight:bold; }
+.push { color:#facc15; font-weight:bold; }
 </style>
 </head>
 <body>
 
 <h2>Bacboo IA Final</h2>
 
+<h3>Modo de Operação</h3>
+<button onclick="setMode('CONSERVADOR')">Conservador</button>
+<button onclick="setMode('AGRESSIVO')">Agressivo</button>
+<p id="mode_display">Modo atual: CONSERVADOR</p>
+
+<h3>Registrar Resultado</h3>
 <button class="player" onclick="send('PLAYER')">PLAYER</button>
 <button class="banker" onclick="send('BANKER')">BANKER</button>
 <button class="tie" onclick="send('TIE')">EMPATE</button>
@@ -222,8 +246,15 @@ button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16p
 <h3>Histórico Sinais</h3><div id="signals"></div>
 
 <script>
+let mode = "CONSERVADOR";
+
+function setMode(m){
+    mode = m;
+    document.getElementById("mode_display").innerText = "Modo atual: " + mode;
+}
+
 async function send(r){
- const res = await fetch('/round?result='+r,{method:'POST'})
+ const res = await fetch('/round?result='+r+'&mode='+mode,{method:'POST'})
  const d = await res.json()
 
  document.getElementById("result").innerText = d.last_result
@@ -235,9 +266,9 @@ async function send(r){
 
  let hr=""
  d.results_history.forEach(x=>{
-  if(x=="PLAYER")hr+='<span class="dot P"></span>'
-  if(x=="BANKER")hr+='<span class="dot B"></span>'
-  if(x=="TIE")hr+='<span class="dot T"></span>'
+  if(x=="PLAYER") hr+='<span class="dot P"></span>'
+  if(x=="BANKER") hr+='<span class="dot B"></span>'
+  if(x=="TIE") hr+='<span class="dot T"></span>'
  })
  document.getElementById("results").innerHTML=hr
 
@@ -245,6 +276,8 @@ async function send(r){
  d.signals_history.forEach(s=>{
   hs+=s.signal+" - "+(s.outcome=="GREEN"
    ? "<span class='green'>GREEN</span>"
+   : s.outcome=="PUSH"
+   ? "<span class='push'>MEIO RED</span>"
    : "<span class='red'>RED</span>")+"<br>"
  })
  document.getElementById("signals").innerHTML=hs
