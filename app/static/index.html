@@ -1,63 +1,72 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
 <meta charset="UTF-8">
 <title>BacBo Live Analyzer</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body {
-    font-family: Arial, sans-serif;
-    background: #0f172a;
-    color: white;
-    text-align: center;
-    padding: 20px;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: white;
+  text-align: center;
 }
-button {
-    width: 90%;
-    padding: 20px;
-    margin: 10px;
-    font-size: 20px;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
+.circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-block;
+  margin: 4px;
 }
 .player { background: #2563eb; }
 .banker { background: #dc2626; }
 .tie { background: #16a34a; }
+
 .panel {
-    background: #020617;
-    padding: 15px;
-    border-radius: 10px;
-    margin-top: 20px;
+  margin-top: 20px;
+  padding: 20px;
+  background: #020617;
+  border-radius: 10px;
+  display: inline-block;
 }
 </style>
 </head>
 <body>
 
-<h1>🎯 BacBo Live Analyzer</h1>
+<h1>BacBo Live Analyzer</h1>
 
-<button class="player" onclick="send('PLAYER')">PLAYER</button>
-<button class="banker" onclick="send('BANKER')">BANKER</button>
-<button class="tie" onclick="send('TIE')">EMPATE</button>
+<div id="history"></div>
 
-<div class="panel" id="output">Aguardando rodada...</div>
+<div class="panel" id="panel">
+  <h2>SINAL: —</h2>
+  <p>Confiança: —%</p>
+  <p>Volatilidade: —%</p>
+</div>
 
 <script>
-function send(result) {
-    fetch(`/round?result=${result}`, { method: 'POST' })
-    .then(res => res.json())
-    .then(data => {
-        document.getElementById("output").innerHTML = `
-            <b>Último:</b> ${data.last_result}<br>
-            <b>Sinal:</b> ${data.signal}<br>
-            <b>Confiança:</b> ${data.confidence}%<br><br>
-            ✅ Greens: ${data.greens} <br>
-            ❌ Reds: ${data.reds} <br><br>
-            <b>Histórico:</b><br>${data.history.join(" | ")}
-        `;
-    });
+async function send(result) {
+  const res = await fetch(`/round?result=${result}`, { method: "POST" });
+  const data = await res.json();
+
+  const historyDiv = document.getElementById("history");
+  historyDiv.innerHTML = "";
+  data.history.forEach(r => {
+    const c = document.createElement("div");
+    c.className = "circle " + r.toLowerCase();
+    historyDiv.appendChild(c);
+  });
+
+  document.getElementById("panel").innerHTML = `
+    <h2>SINAL: ${data.analysis.signal}</h2>
+    <p>Confiança: ${data.analysis.confidence}%</p>
+    <p>Volatilidade: ${data.analysis.volatility}%</p>
+  `;
 }
 </script>
+
+<br><br>
+<button onclick="send('PLAYER')">PLAYER</button>
+<button onclick="send('BANKER')">BANKER</button>
+<button onclick="send('TIE')">EMPATE</button>
 
 </body>
 </html>
