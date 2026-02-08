@@ -33,7 +33,6 @@ def new_session():
         "results_history": [],
         "signals_history": [],
         "current_signal": None,
-        "cooldown_counter": 0,
         "last_dominant": None,
         "confirm_count": 0
     }
@@ -43,7 +42,8 @@ def new_session():
 # =========================
 MAX_HISTORY = 80
 WINDOW = 12
-COOLDOWN_ROUNDS = 5   # ✅ espera renovada
+CONFIRM_REQUIRED = 1   # ✅ confirmação mínima
+BASE_CONFIDENCE = 72   # 📉 confiança reduzida
 
 # =========================
 # LOGIN
@@ -77,7 +77,7 @@ def login(license: str = Form(...)):
     return resp
 
 # =========================
-# SESSÃO ATIVA
+# SESSÃO
 # =========================
 def get_state(request: Request):
     sid = request.cookies.get("session_id")
@@ -103,27 +103,30 @@ def analyze(state):
     if len(rh) < WINDOW:
         return None, 0
 
-    recent = [x for x in rh[-WINDOW:] if x != "TIE"]
+    recent = [x for x in rh[-WINDOW:] if x in ("PLAYER", "BANKER")]
     if len(recent) < 6:
         return None, 0
 
     regime, dominant = detect_regime(recent)
 
+    # 🔒 Detecta domínio
     if regime == "DOMINIO":
         state["last_dominant"] = dominant
         state["confirm_count"] = 0
         return None, 0
 
+    # 🔓 Quebra confirmada
     if state["last_dominant"]:
-        if recent[-1] == state["last_dominant"]:
+        if recent[-1] != state["last_dominant"]:
             state["confirm_count"] += 1
         else:
             state["confirm_count"] = 0
 
-        if state["confirm_count"] >= 2:
+        if state["confirm_count"] >= CONFIRM_REQUIRED:
+            signal = recent[-1]
             state["last_dominant"] = None
             state["confirm_count"] = 0
-            return recent[-1], 85
+            return signal, BASE_CONFIDENCE
 
     return None, 0
 
@@ -140,24 +143,19 @@ def new_round(result: str, request: Request):
     if result not in ["PLAYER", "BANKER", "TIE"]:
         return {"error": "INVALID"}
 
-    # 🔒 FECHA SINAL ANTERIOR
+    # 📌 Fecha sinal anterior
     if state["current_signal"] and result != "TIE":
         outcome = "GREEN" if result == state["current_signal"]["signal"] else "RED"
         state["current_signal"]["outcome"] = outcome
         state["signals_history"].append(state["current_signal"])
         state["current_signal"] = None
 
-    # 📊 REGISTRA RESULTADO
+    # 📊 Registra resultado
     state["results_history"].append(result)
     if len(state["results_history"]) > MAX_HISTORY:
         state["results_history"].pop(0)
 
-    # ⏳ COOLDOWN FUNCIONAL
-    if state["cooldown_counter"] > 0:
-        state["cooldown_counter"] -= 1
-        return response(state, result)
-
-    # 🧠 ANALISA
+    # 🧠 Analisa
     signal, confidence = analyze(state)
     if signal:
         state["current_signal"] = {
@@ -165,15 +163,18 @@ def new_round(result: str, request: Request):
             "confidence": confidence,
             "outcome": "WAIT"
         }
-        state["cooldown_counter"] = COOLDOWN_ROUNDS
 
     return response(state, result)
 
 def response(state, result):
+    total = len(state["signals_history"])
+    wins = len([s for s in state["signals_history"] if s["outcome"] == "GREEN"])
+    hit_rate = round((wins / total) * 100, 1) if total > 0 else 0
+
     return {
         "last_result": result,
         "current_signal": state["current_signal"],
-        "cooldown": state["cooldown_counter"],
+        "hit_rate": hit_rate,
         "signals_history": state["signals_history"],
         "results_history": state["results_history"]
     }
@@ -204,7 +205,6 @@ button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16p
 .T { background:#16a34a; }
 .green { color:#22c55e; font-weight:bold; }
 .red { color:#ef4444; font-weight:bold; }
-.cool { color:#eab308; }
 </style>
 </head>
 <body>
@@ -217,7 +217,7 @@ button { width:92%; padding:26px; margin:10px; font-size:28px; border-radius:16p
 
 <h3>Resultado Atual</h3><div id="result"></div>
 <h3>Sinal</h3><div id="signal"></div>
-<h3>Cooldown</h3><div id="cooldown"></div>
+<h3>Taxa de Acerto</h3><div id="hit"></div>
 <h3>Histórico Resultados</h3><div id="results"></div>
 <h3>Histórico Sinais</h3><div id="signals"></div>
 
@@ -231,8 +231,7 @@ async function send(r){
  document.getElementById("signal").innerText =
  d.current_signal ? d.current_signal.signal+" ("+d.current_signal.confidence+"%)" : "SEM SINAL"
 
- document.getElementById("cooldown").innerHTML =
- d.cooldown>0 ? "<span class='cool'>Aguardando "+d.cooldown+" rodadas</span>" : "LIBERADO"
+ document.getElementById("hit").innerText = d.hit_rate+"%"
 
  let hr=""
  d.results_history.forEach(x=>{
