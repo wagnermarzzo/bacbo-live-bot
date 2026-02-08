@@ -1,6 +1,10 @@
-state = {
-    "last_signal": None,
-    "last_confidence": 0,
-    "greens": 0,
-    "reds": 0
-}
+history = []
+MAX_HISTORY = 60
+last_signal = None
+confidence = 0
+status = "AGUARDAR"
+
+def add_result(result):
+    history.append(result)
+    if len(history) > MAX_HISTORY:
+        history.pop(0)
